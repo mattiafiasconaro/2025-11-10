@@ -1,8 +1,6 @@
 from database.DB_connect import DBConnect
 from model.Arco import Arco
-
-from model.Store import Store
-from model.order import Order
+from model.Order import Order
 
 
 class DAO():
@@ -13,7 +11,8 @@ class DAO():
         results = []
 
         cursor = conn.cursor(dictionary=True)
-        query = "SELECT * from stores"
+        query = """select DISTINCT s.*
+                from stores s """
 
         cursor.execute(query)
 
@@ -25,17 +24,17 @@ class DAO():
         return results
 
     @staticmethod
-    def getAllNodes(storeId):
+    def getAllNodes(store_id):
         conn = DBConnect.get_connection()
 
         results = []
 
         cursor = conn.cursor(dictionary=True)
-        query = """select o.*
-                from orders o , stores s 
-                where s.store_id =o.store_id and s.store_id = %s"""
+        query = """select distinct o.*
+                from orders o 
+                where o.store_id =%s """
 
-        cursor.execute(query,(storeId,))
+        cursor.execute(query,(store_id,))
 
         for row in cursor:
             results.append(Order(**row))
@@ -45,38 +44,31 @@ class DAO():
         return results
 
     @staticmethod
-    def getAllEdges(storeId,k, idMapS):
+    def getAllEdges(store_id,k,idMap):
         conn = DBConnect.get_connection()
 
         results = []
 
         cursor = conn.cursor(dictionary=True)
-        query = """select tb1.order_id as ordine1, tb2.order_id as ordine2, (q1.quantita + q2.quantita)/DATEDIFF(tb2.order_date, tb1.order_date) as peso
-from (select o.*
-      from orders o, stores s
-      where s.store_id = o.store_id and s.store_id = %s) as tb1,
-     (select o.*
-      from orders o, stores s
-      where s.store_id = o.store_id and s.store_id = %s) as tb2,
-     (select o.order_id, sum(oi.quantity) as quantita
-      from orders o, order_items oi
-      where o.order_id = oi.order_id
-      group by o.order_id) as q1,
-     (select o.order_id, sum(oi.quantity) as quantita
-      from orders o, order_items oi
-      where o.order_id = oi.order_id
-      group by o.order_id) as q2
-where DATEDIFF(tb2.order_date, tb1.order_date) <= %s
-  and tb1.order_id != tb2.order_id
-  and tb1.store_id = tb2.store_id
-  and tb1.order_date < tb2.order_date
-  and q1.order_id = tb1.order_id 
-  and tb2.order_id = q2.order_id"""
+        query = """ select  distinct a1.order_id as ordine1, a2.order_id as ordine2 , (a1.n +a2.n )/DATEDIFF(a2.order_date ,a1.order_date ) as peso
+                from (select  o.order_id , o.order_date , sum(oi.quantity) as n 
+                from orders o, order_items oi  
+                where o.store_id =%s
+                and oi.order_id = o.order_id 
+                group by o.order_id , o.order_date ) a1,
+                (select  o.order_id , o.order_date ,sum(oi.quantity) as n 
+                from orders o , order_items oi 
+                where o.store_id =%s
+                and oi.order_id =o.order_id 
+                group by o.order_id , o.order_date  ) a2
+                where a1.order_id < a2.order_id 
+                and DATEDIFF(a2.order_date ,a1.order_date ) <=%s
+                and a1.order_date < a2.order_date  """
 
-        cursor.execute(query,(storeId,storeId,k))
+        cursor.execute(query, (store_id,store_id,k))
 
         for row in cursor:
-            results.append(Arco(idMapS[row["ordine1"]],idMapS[row["ordine2"]],row["peso"]))
+            results.append(Arco(idMap[row["ordine1"]],idMap[row["ordine2"]],row["peso"]))
 
         cursor.close()
         conn.close()
